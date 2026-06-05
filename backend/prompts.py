@@ -147,6 +147,13 @@ __NOVEL_TEXT__
 # ── 公共构建函数 ───────────────────────────────────────────────
 
 
+def _sanitize_user_text(text: str) -> str:
+    """清理用户文本中可能与 prompt 分隔符冲突的内容。"""
+    import re
+    # 将独立的 --- 替换为 ...，防止 prompt 注入跳过数据边界
+    return re.sub(r'^---$', '...', text, flags=re.MULTILINE)
+
+
 def build_convert_prompt(novel_text: str, chapter_count: int, title: str = "") -> str:
     """
     构建小说转剧本的主 Prompt。
@@ -163,10 +170,10 @@ def build_convert_prompt(novel_text: str, chapter_count: int, title: str = "") -
 
     return (
         _CONVERT_TEMPLATE
-        .replace("__TITLE_HINT__", title_hint)
-        .replace("__CHAPTER_COUNT__", str(chapter_count))
+        .replace("__NOVEL_TEXT__", _sanitize_user_text(novel_text))  # 用户文本先替换+清理
         .replace("__SCHEMA_EXAMPLE__", SCHEMA_EXAMPLE)
-        .replace("__NOVEL_TEXT__", novel_text)
+        .replace("__CHAPTER_COUNT__", str(chapter_count))
+        .replace("__TITLE_HINT__", title_hint)                       # title 最后
     )
 
 

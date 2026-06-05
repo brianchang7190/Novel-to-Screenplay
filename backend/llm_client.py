@@ -22,6 +22,8 @@ logger = logging.getLogger(__name__)
 # ── 常量 ───────────────────────────────────────────────────────
 
 MAX_CHARS_PER_REQUEST = 50000   # 单次请求最大字符数（超出则分段）
+MAX_CHAPTERS = 200              # 分段模式下最大章节数，防止资源耗尽
+MAX_CHARS_FOR_EXTRACTION = 200000  # 角色提取 Prompt 最大字符数
 DEFAULT_MODEL = "deepseek-chat"
 DEFAULT_TEMPERATURE = 0.3       # 低温度保证格式稳定
 REQUEST_TIMEOUT = 120.0         # API 请求超时（秒）
@@ -128,7 +130,21 @@ class DeepSeekClient:
         2. 再逐章转换场景内容
         3. 合并为完整 YAML
         """
+        # 安全上限：防止超大文本导致资源耗尽
+        if len(chapters) > MAX_CHAPTERS:
+            logger.warning(
+                "章节数 %d 超过上限 %d，仅处理前 %d 章",
+                len(chapters), MAX_CHAPTERS, MAX_CHAPTERS,
+            )
+            chapters = chapters[:MAX_CHAPTERS]
+
         full_text = "\n\n".join(ch.content for ch in chapters)
+        if len(full_text) > MAX_CHARS_FOR_EXTRACTION:
+            logger.warning(
+                "角色提取文本 %d 字符超过上限 %d，截断处理",
+                len(full_text), MAX_CHARS_FOR_EXTRACTION,
+            )
+            full_text = full_text[:MAX_CHARS_FOR_EXTRACTION]
 
         # 第一步：提取全局角色表
         char_prompt = build_character_extraction_prompt(full_text)
@@ -195,8 +211,7 @@ class DeepSeekClient:
                     "API 请求频率过高，请稍后重试。"
                 )
             raise RuntimeError(
-                f"API 请求失败（HTTP {e.response.status_code}）："
-                f"{e.response.text[:200]}"
+                f"API 请求失败（HTTP {e.response.status_code}），请检查 API Key 和网络连接。"
             )
         except httpx.RequestError as e:
             raise RuntimeError(
@@ -207,10 +222,13 @@ class DeepSeekClient:
         try:
             data = response.json()
         except Exception:
-            logger.error("API 返回非 JSON 响应：%s", response.text[:500])
+            logger.error(
+                "API 返回非 JSON 响应（HTTP %d），Content-Type: %s",
+                response.status_code,
+                response.headers.get("content-type", "unknown"),
+            )
             raise RuntimeError(
-                f"API 返回了非预期的格式（非 JSON）。"
-                f"响应内容：{response.text[:200]}"
+                "API 返回了非预期的格式（非 JSON），请检查 DEEPSEEK_BASE_URL 配置。"
             )
 
         # 检查 API 是否返回了错误
@@ -308,6 +326,13 @@ __CHAPTER_CONTENT__
 请输出场景列表："""
 
 
+def _sanitize_user_text(text: str) -> str:
+    """清理用户文本中可能与 prompt 分隔符冲突的内容。"""
+    # 将独立的 --- 分隔符替换为 ...，防止 prompt 注入
+    import re
+    return re.sub(r'^---$', '...', text, flags=re.MULTILINE)
+
+
 def _build_chapter_scene_prompt(
     chapter: Chapter, characters_block: str, title: str
 ) -> str:
@@ -315,12 +340,12 @@ def _build_chapter_scene_prompt(
     display_title = title if title else "从文本提取"
     return (
         _CHAPTER_SCENE_TEMPLATE
-        .replace("__TITLE__", display_title)
+        .replace("__CHAPTER_CONTENT__", _sanitize_user_text(chapter.content))  # 用户文本先替换
+        .replace("__CHARACTERS_BLOCK__", characters_block)
+        .replace("__CHAPTER_TITLE__", chapter.title)
         .replace("__CHAPTER_NUM_PAD__", f"{chapter.number:03d}")
         .replace("__CHAPTER_NUM__", str(chapter.number))
-        .replace("__CHAPTER_TITLE__", chapter.title)
-        .replace("__CHARACTERS_BLOCK__", characters_block)
-        .replace("__CHAPTER_CONTENT__", chapter.content)
+        .replace("__TITLE__", display_title)  # 用户控制的 title 最后
     )
 
 
