@@ -1,0 +1,25 @@
+# 环境变量（含 API Key）
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 上传文件
+uploads/
+
+# 输出文件
+output/
+
+# OS
+.DS_Store
+Thumbs.db
