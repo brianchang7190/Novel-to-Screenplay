@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI 小说转剧本工具</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --base: #1e1e2e; --mantle: #181825; --crust: #11111b;
+    --surface: #313244; --surface-alt: #45475a; --overlay: #6c7086;
+    --text: #cdd6f4; --subtext: #a6adc8; --subtle: #585b70;
+    --blue: #89b4fa; --teal: #94e2d5; --green: #a6e3a1;
+    --yellow: #f9e2af; --red: #f38ba8;
+    --border: #45475a; --radius: 8px; --radius-lg: 12px;
+    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", sans-serif;
+    --font-mono: "SF Mono", "Cascadia Code", "Fira Code", "Consolas", monospace;
+  }
+  body { font-family: var(--font); background: var(--base); color: var(--text); min-height: 100vh; line-height: 1.6; }
+  .container { max-width: 960px; margin: 0 auto; padding: 32px 20px 80px; }
+
+  header { text-align: center; margin-bottom: 40px; }
+  header h1 { font-size: 1.8rem; font-weight: 700; }
+  header h1 .accent { color: var(--blue); }
+  header p { margin-top: 6px; color: var(--subtext); font-size: 0.9rem; }
+
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 24px; margin-bottom: 16px; }
+
+  /* 上传区 */
+  .upload-zone { border: 2px dashed var(--overlay); border-radius: var(--radius-lg); padding: 40px 20px; text-align: center; cursor: pointer; transition: all 0.2s; position: relative; }
+  .upload-zone:hover, .upload-zone.drag-over { border-color: var(--blue); background: rgba(137,180,250,0.05); }
+  .upload-zone .icon { font-size: 2.2rem; margin-bottom: 8px; display: block; }
+  .upload-zone .label { font-size: 0.95rem; font-weight: 600; }
+  .upload-zone .hint { margin-top: 4px; font-size: 0.8rem; color: var(--subtext); }
+  .upload-zone input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+
+  /* 文件预览 */
+  details.file-preview { margin-top: 16px; }
+  details.file-preview summary { cursor: pointer; font-weight: 600; color: var(--teal); font-size: 0.9rem; }
+  details.file-preview summary:hover { color: var(--blue); }
+  .file-info { display: flex; gap: 16px; flex-wrap: wrap; margin: 8px 0; font-size: 0.82rem; color: var(--subtext); }
+  .file-info strong { color: var(--text); }
+  .preview-content { background: var(--mantle); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; max-height: 200px; overflow-y: auto; font-size: 0.82rem; color: var(--subtext); white-space: pre-wrap; word-break: break-all; }
+
+  /* 按钮 */
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 12px 24px; border: none; border-radius: var(--radius); font-family: var(--font); font-size: 0.9rem; font-weight: 600; cursor: pointer; transition: all 0.15s; }
+  .btn:active { transform: scale(0.98); }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-primary { background: var(--blue); color: var(--crust); width: 100%; padding: 14px; font-size: 1rem; }
+  .btn-primary:hover:not(:disabled) { background: #a6c8ff; }
+  .btn-copy { background: var(--teal); color: var(--crust); flex: 1; }
+  .btn-copy:hover:not(:disabled) { background: #b3efe2; }
+  .btn-download { background: var(--green); color: var(--crust); flex: 1; }
+  .btn-download:hover:not(:disabled) { background: #bcf0b8; }
+  .btn-retry { background: var(--yellow); color: var(--crust); }
+  .btn-retry:hover { background: #fceabb; }
+  .btn-group { display: flex; gap: 10px; margin-top: 14px; }
+
+  /* Loading */
+  .loading { display: none; align-items: center; justify-content: center; gap: 12px; padding: 18px; color: var(--subtext); }
+  .loading.active { display: flex; }
+  .spinner { width: 20px; height: 20px; border: 3px solid var(--surface-alt); border-top-color: var(--blue); border-radius: 50%; animation: spin 0.7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .timer { font-family: var(--font-mono); font-size: 0.85rem; color: var(--overlay); margin-left: 8px; }
+
+  /* 结果区 */
+  .result-section { display: none; }
+  .result-section.active { display: block; }
+  .result-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+  .result-header h2 { font-size: 1.05rem; }
+  .result-meta { display: flex; gap: 10px; font-size: 0.8rem; }
+  .result-meta span { background: var(--mantle); padding: 3px 10px; border-radius: 20px; border: 1px solid var(--border); }
+
+  .yaml-editor { width: 100%; min-height: 380px; max-height: 560px; resize: vertical; background: var(--crust); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 18px; font-family: var(--font-mono); font-size: 0.82rem; line-height: 1.65; tab-size: 2; outline: none; }
+  .yaml-editor:focus { border-color: var(--blue); }
+
+  /* 调试面板 */
+  .debug-panel { display: none; margin-top: 16px; }
+  .debug-panel.active { display: block; }
+  .debug-bar { display: flex; align-items: center; gap: 8px; font-family: var(--font-mono); font-size: 0.82rem; padding: 10px 14px; border-radius: var(--radius); }
+  .debug-bar.success { background: rgba(166,227,161,0.1); border: 1px solid rgba(166,227,161,0.3); color: var(--green); }
+  .debug-bar.error   { background: rgba(243,139,168,0.1); border: 1px solid rgba(243,139,168,0.3); color: var(--red); }
+  .debug-bar.info    { background: rgba(137,180,250,0.1); border: 1px solid rgba(137,180,250,0.3); color: var(--blue); }
+  .debug-body { margin-top: 8px; background: var(--mantle); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; font-family: var(--font-mono); font-size: 0.8rem; color: var(--subtext); white-space: pre-wrap; word-break: break-all; max-height: 300px; overflow-y: auto; }
+
+  /* Toast */
+  .toast-container { position: fixed; top: 20px; right: 20px; z-index: 1000; display: flex; flex-direction: column; gap: 8px; }
+  .toast { padding: 12px 18px; border-radius: var(--radius); font-size: 0.85rem; font-weight: 500; color: var(--crust); min-width: 240px; max-width: 400px; box-shadow: 0 6px 24px rgba(0,0,0,0.5); animation: toastIn 0.3s ease-out; }
+  .toast.success { background: var(--green); }
+  .toast.error   { background: var(--red); }
+  @keyframes toastIn { from { opacity: 0; transform: translateX(30px); } to { opacity: 1; transform: translateX(0); } }
+
+  @media (max-width: 600px) { .container { padding: 20px 14px 60px; } header h1 { font-size: 1.4rem; } .btn-group { flex-direction: column; } }
+
+  /* 健康状态指示 */
+  .status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; }
+  .status-dot.online { background: var(--green); }
+  .status-dot.offline { background: var(--red); }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <header>
+    <h1>📜 AI <span class="accent">小说转剧本</span>工具</h1>
+    <p>上传 ≥3 章小说文本 → DeepSeek AI 自动生成 YAML 剧本</p>
+    <p style="font-size:0.78rem;margin-top:4px;">
+      <span class="status-dot" id="statusDot"></span>
+      <span id="statusText" style="color:var(--subtext);">检测后端…</span>
+    </p>
+  </header>
+
+  <!-- 上传区 -->
+  <div class="card">
+    <div class="upload-zone" id="uploadZone">
+      <span class="icon">📂</span>
+      <div class="label">点击上传或拖拽文件到此处</div>
+      <div class="hint">支持 .txt / .md，需 ≥3 个完整章节 — 第X章 / Chapter X / Markdown 标题</div>
+      <input type="file" id="fileInput" accept=".txt,.md">
+    </div>
+
+    <details class="file-preview" id="filePreview" style="display:none;">
+      <summary>📄 文件预览</summary>
+      <div class="file-info">
+        <span>文件名：<strong id="previewName">—</strong></span>
+        <span>大小：<strong id="previewSize">—</strong></span>
+        <span>预估章节：<strong id="previewChapters">—</strong></span>
+        <span>字符数：<strong id="previewChars">—</strong></span>
+      </div>
+      <div class="preview-content" id="previewContent"></div>
+    </details>
+  </div>
+
+  <!-- 转换按钮 -->
+  <button class="btn btn-primary" id="convertBtn" disabled>⚡ 开始转换</button>
+
+  <!-- 加载态 -->
+  <div class="loading" id="loading">
+    <div class="spinner"></div>
+    <span>AI 正在分析文本、提取角色、拆分场景…</span>
+    <span class="timer" id="timer">0.0s</span>
+  </div>
+
+  <!-- 调试面板 -->
+  <div class="debug-panel" id="debugPanel">
+    <div class="debug-bar" id="debugBar"></div>
+    <div class="debug-body" id="debugBody"></div>
+  </div>
+
+  <!-- 结果区 -->
+  <div class="result-section" id="resultSection">
+    <div class="card">
+      <div class="result-header">
+        <h2>📋 剧本 YAML（可直接编辑）</h2>
+        <div class="result-meta">
+          <span id="metaChapters">章节: —</span>
+          <span id="metaScenes">场景: —</span>
+          <span id="metaCharacters">角色: —</span>
+        </div>
+      </div>
+      <textarea class="yaml-editor" id="yamlEditor" spellcheck="false" placeholder="转换结果将显示在此处…"></textarea>
+      <div class="btn-group">
+        <button class="btn btn-copy" id="copyBtn">📋 复制到剪贴板</button>
+        <button class="btn btn-download" id="downloadBtn">💾 下载 .yaml</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast-container" id="toastContainer"></div>
+
+<script>
+(function () {
+  const uploadZone = document.getElementById('uploadZone');
+  const fileInput = document.getElementById('fileInput');
+  const filePreview = document.getElementById('filePreview');
+  const previewName = document.getElementById('previewName');
+  const previewSize = document.getElementById('previewSize');
+  const previewChapters = document.getElementById('previewChapters');
+  const previewChars = document.getElementById('previewChars');
+  const previewContent = document.getElementById('previewContent');
+  const convertBtn = document.getElementById('convertBtn');
+  const loadingEl = document.getElementById('loading');
+  const timerEl = document.getElementById('timer');
+  const resultSection = document.getElementById('resultSection');
+  const yamlEditor = document.getElementById('yamlEditor');
+  const copyBtn = document.getElementById('copyBtn');
+  const downloadBtn = document.getElementById('downloadBtn');
+  const metaChapters = document.getElementById('metaChapters');
+  const metaScenes = document.getElementById('metaScenes');
+  const metaCharacters = document.getElementById('metaCharacters');
+  const debugPanel = document.getElementById('debugPanel');
+  const debugBar = document.getElementById('debugBar');
+  const debugBody = document.getElementById('debugBody');
+  const toastContainer = document.getElementById('toastContainer');
+  const statusDot = document.getElementById('statusDot');
+  const statusText = document.getElementById('statusText');
+
+  let selectedFile = null;
+  const API_BASE = '';  // 同源部署，无需跨域
+
+  // ── 工具 ──────────────────────────────────────────────
+  function formatSize(b) {
+    if (b < 1024) return b + ' B';
+    if (b < 1048576) return (b/1024).toFixed(1) + ' KB';
+    return (b/1048576).toFixed(1) + ' MB';
+  }
+  function countChaptersLocal(text) {
+    const patterns = [
+      /第\s*[一二三四五六七八九十百千万零\d]+\s*[章回]/g,
+      /Chapter\s+\d+/gi,
+      /^#{1,3}\s*(?:第\s*[一二三四五六七八九十百千万零\d]+\s*[章回]|Chapter\s+\d+)/gim,
+    ];
+    let max = 0;
+    for (const p of patterns) { const m = text.match(p); if (m && m.length > max) max = m.length; }
+    return max;
+  }
+  function showToast(msg, type) {
+    const t = document.createElement('div');
+    t.className = 'toast ' + (type || 'info');
+    t.textContent = msg;
+    toastContainer.appendChild(t);
+    setTimeout(() => { t.style.opacity='0'; t.style.transition='opacity 0.3s'; setTimeout(() => t.remove(), 300); }, 4000);
+  }
+  function showDebug(status, summary, detail) {
+    debugPanel.classList.add('active');
+    debugBar.className = 'debug-bar ' + status;
+    debugBar.textContent = summary;
+    debugBody.textContent = detail || '';
+  }
+
+  // ── 后端健康检查 ───────────────────────────────────────
+  async function checkHealth() {
+    try {
+      const r = await fetch(API_BASE + '/api/health');
+      const d = await r.json();
+      if (d.status === 'ok') {
+        statusDot.className = 'status-dot online';
+        statusText.textContent = '后端已连接 (v' + d.version + ')';
+      }
+    } catch (e) {
+      statusDot.className = 'status-dot offline';
+      statusText.textContent = '后端未启动 — 请先运行: cd backend && python3 main.py';
+    }
+  }
+  checkHealth();
+  setInterval(checkHealth, 30000);
+
+  // ── 文件选择 ─────────────────────────────────────────
+  function handleFile(file) {
+    if (!file) return;
+    const ext = file.name.split('.').pop().toLowerCase();
+    if (ext !== 'txt' && ext !== 'md') { showToast('仅支持 .txt 和 .md', 'error'); return; }
+    if (file.size > 10*1024*1024) { showToast('文件不能超过 10MB', 'error'); return; }
+    selectedFile = file;
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      const text = e.target.result;
+      const chap = countChaptersLocal(text);
+      previewName.textContent = file.name;
+      previewSize.textContent = formatSize(file.size);
+      previewChapters.textContent = chap > 0 ? chap + ' 章' : '未识别';
+      previewChapters.style.color = chap >= 3 ? 'var(--green)' : 'var(--yellow)';
+      previewChars.textContent = text.length + ' 字';
+      previewContent.textContent = text.slice(0, 800);
+      if (text.length > 800) previewContent.textContent += '\n…（预览截断，共 ' + text.length + ' 字）';
+      filePreview.style.display = 'block';
+      filePreview.open = true;
+      convertBtn.disabled = false;
+      if (chap < 3) showToast('前端预估仅 ' + chap + ' 章，可能不满足 ≥3 章要求', 'info');
+    };
+    reader.readAsText(file);
+  }
+
+  fileInput.addEventListener('change', () => { if (fileInput.files[0]) handleFile(fileInput.files[0]); });
+  uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('drag-over'); });
+  uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag-over'));
+  uploadZone.addEventListener('drop', e => {
+    e.preventDefault();
+    uploadZone.classList.remove('drag-over');
+    if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+  });
+
+  // ── 转换 ─────────────────────────────────────────────
+  convertBtn.addEventListener('click', async () => {
+    if (!selectedFile) return;
+
+    convertBtn.disabled = true;
+    loadingEl.classList.add('active');
+    resultSection.classList.remove('active');
+    debugPanel.classList.remove('active');
+    yamlEditor.value = '';
+
+    const startTime = performance.now();
+    const timerInterval = setInterval(() => {
+      timerEl.textContent = ((performance.now() - startTime) / 1000).toFixed(1) + 's';
+    }, 200);
+
+    const formData = new FormData();
+    formData.append('file', selectedFile);
+
+    try {
+      const response = await fetch(API_BASE + '/api/convert', { method: 'POST', body: formData });
+      const elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
+      clearInterval(timerInterval);
+      timerEl.textContent = elapsed + 's';
+
+      // 尝试解析响应
+      let data;
+      const rawText = await response.text();
+      try { data = JSON.parse(rawText); }
+      catch (e) {
+        showDebug('error',
+          '❌ 后端返回非 JSON — HTTP ' + response.status + ' | 耗时 ' + elapsed + 's',
+          rawText.slice(0, 1000)
+        );
+        showToast('后端返回格式异常 (HTTP ' + response.status + ')，见调试面板', 'error');
+        return;
+      }
+
+      // 成功
+      if (response.ok && data.success) {
+        yamlEditor.value = data.yaml_content || '';
+        resultSection.classList.add('active');
+        const m = data.meta || {};
+        metaChapters.textContent = '章节: ' + (m.chapter_count || '—');
+        metaScenes.textContent = '场景: ' + (m.scene_count || '—');
+        metaCharacters.textContent = '角色: ' + (m.character_count || '—');
+
+        showDebug('success',
+          '✅ 转换成功 — HTTP ' + response.status + ' | 耗时 ' + elapsed + 's | ' +
+          (m.scene_count||'?') + ' 场景 / ' + (m.character_count||'?') + ' 角色',
+          'YAML 长度: ' + (data.yaml_content||'').length + ' 字符\n' +
+          '元信息: ' + JSON.stringify(m, null, 2)
+        );
+        showToast('转换成功！' + (m.scene_count ? ' ' + m.scene_count + ' 个场景' : ''), 'success');
+        resultSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        return;
+      }
+
+      // 失败：展示详细错误
+      const errMsg = data.detail || data.error || '未知错误';
+      showDebug('error',
+        '❌ 转换失败 — HTTP ' + response.status + ' | 耗时 ' + elapsed + 's',
+        'HTTP Status: ' + response.status + '\n' +
+        '错误详情: ' + errMsg + '\n' +
+        '完整响应: ' + JSON.stringify(data, null, 2)
+      );
+      showToast('转换失败 (HTTP ' + response.status + ')，见调试面板', 'error');
+
+    } catch (err) {
+      clearInterval(timerInterval);
+      const elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
+      timerEl.textContent = elapsed + 's';
+      showDebug('error',
+        '❌ 网络错误 | 耗时 ' + elapsed + 's',
+        '错误类型: ' + err.name + '\n错误信息: ' + err.message + '\n\n请确认后端已启动: cd backend && python3 main.py'
+      );
+      showToast('网络请求失败，后端可能未启动', 'error');
+    } finally {
+      convertBtn.disabled = false;
+      loadingEl.classList.remove('active');
+    }
+  });
+
+  // ── 复制 ─────────────────────────────────────────────
+  copyBtn.addEventListener('click', async () => {
+    if (!yamlEditor.value) { showToast('无内容可复制', 'error'); return; }
+    try { await navigator.clipboard.writeText(yamlEditor.value); showToast('已复制到剪贴板！', 'success'); }
+    catch (e) { yamlEditor.select(); showToast('请手动 Ctrl+C 复制', 'error'); }
+  });
+
+  // ── 下载 ─────────────────────────────────────────────
+  downloadBtn.addEventListener('click', () => {
+    if (!yamlEditor.value) { showToast('无内容可下载', 'error'); return; }
+    const blob = new Blob([yamlEditor.value], { type: 'text/yaml;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = (selectedFile ? selectedFile.name.replace(/\.(txt|md)$/i, '') : 'script') + '_剧本.yaml';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast('下载完成！', 'success');
+  });
+
+  // Ctrl+S 快捷键下载
+  document.addEventListener('keydown', e => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 's' && document.activeElement === yamlEditor) {
+      e.preventDefault(); downloadBtn.click();
+    }
+  });
+})();
+</script>
+</body>
+</html>
