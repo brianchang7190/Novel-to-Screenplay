@@ -4,7 +4,7 @@
 
 ## Demo 视频
 
-> [📺 演示视频链接] — 待替换为你的 B站/云盘 链接
+> [📺 B站演示视频](https://www.bilibili.com/video/BV13U7k6HE9Y/)
 
 ## 快速开始
 
