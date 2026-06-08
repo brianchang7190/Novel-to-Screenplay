@@ -118,6 +118,20 @@ open http://localhost:8000
 | 数据格式 | YAML（剧本输出） |
 | 设计风格 | Catppuccin Mocha 暗色主题 |
 
+### 第三方依赖
+
+| 包名 | 版本要求 | 用途 |
+|------|----------|------|
+| fastapi | ≥0.104.0 | Web 框架，路由处理与请求校验 |
+| uvicorn | ≥0.24.0 | ASGI 服务器，运行 FastAPI 应用 |
+| httpx | ≥0.25.0 | 异步 HTTP 客户端，调用 DeepSeek API |
+| pydantic | ≥2.0（fastapi 内置） | 数据模型定义与请求/响应校验 |
+| pyyaml | ≥6.0.1 | YAML 格式解析与序列化 |
+| python-multipart | ≥0.0.6 | 文件上传解析（multipart/form-data） |
+| python-dotenv | ≥1.0.0 | 从 .env 文件加载环境变量（API Key） |
+
+以上均为 Python 生态通用第三方库，项目原创功能部分包括：章节识别算法、LLM Prompt 模板设计、YAML Schema 校验逻辑、分段转换与角色 ID 一致性维护机制。
+
 ## YAML Schema 说明
 
 详见 [schema_design.md](./schema_design.md)，包含完整 Schema 定义、设计原则和扩展性说明。
